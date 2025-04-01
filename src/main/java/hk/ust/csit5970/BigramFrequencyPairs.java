@@ -3,6 +3,8 @@ package hk.ust.csit5970;
 import java.io.IOException;
 import java.util.Arrays;
 
+import javax.naming.Context;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -53,6 +55,26 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			if (words.length >= 2) {
+				for (int i = 0; i < words.length-1; i++) {
+					// Pairing
+					String currentWord = words[i];
+					String nextWord = words[i+1];
+					/*boolean punc1 = currentWord.matches(".*\\p{P}.*");
+					boolean punc2 = nextWord.matches(".*\\p{P}.*");
+					if (punc1 || punc2)
+						continue;*/
+					if (!currentWord.isEmpty() && !nextWord.isEmpty()) {
+						BIGRAM.set(currentWord, nextWord);
+						context.write(BIGRAM, ONE);
+						BIGRAM.set(currentWord, " ");
+						context.write(BIGRAM, ONE);
+					}
+				}
+				
+			}
+			
+			
 		}
 	}
 
@@ -64,6 +86,8 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 
 		// Reuse objects.
 		private final static FloatWritable VALUE = new FloatWritable();
+		private int margin = 0;
+
 
 		@Override
 		public void reduce(PairOfStrings key, Iterable<IntWritable> values,
@@ -71,9 +95,25 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int count = 0;
+			for(IntWritable value : values)
+				count += value.get();
+			//String leftWord = key.getLeftElement();
+			String rightWord = key.getRightElement();
+			// Come to an end
+			if(rightWord.equals(" ")){
+				VALUE.set((float)count);
+				context.write(key, VALUE);
+				margin = count;
+			}
+			else{
+				VALUE.set((float)count/margin);
+				context.write(key, VALUE);
+			}
 		}
+
 	}
-	
+
 	private static class MyCombiner extends
 			Reducer<PairOfStrings, IntWritable, PairOfStrings, IntWritable> {
 		private static final IntWritable SUM = new IntWritable();
@@ -84,6 +124,12 @@ public class BigramFrequencyPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int sum = 0;
+			for (IntWritable value : values) {
+				sum += value.get();
+			}
+			SUM.set(sum);
+			context.write(key, SUM);
 		}
 	}
 

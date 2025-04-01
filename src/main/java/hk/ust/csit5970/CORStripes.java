@@ -15,19 +15,22 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
+import org.apache.hadoop.io.Text;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import org.apache.commons.cli.ParseException;
 import java.util.*;
+
+import javax.naming.Context;
 
 /**
  * Compute the bigram count using "pairs" approach
  */
 public class CORStripes extends Configured implements Tool {
 	private static final Logger LOG = Logger.getLogger(CORStripes.class);
-
 	/*
 	 * TODO: write your first-pass Mapper here.
 	 */
@@ -43,6 +46,13 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			while (doc_tokenizer.hasMoreTokens()){
+				String word = doc_tokenizer.nextToken();
+				int count = (word_set.get(word) == null ? 1 : word_set.get(word) + 1);
+				word_set.put(word, count);
+			}
+			for(Map.Entry<String, Integer> wordEntry : word_set.entrySet())
+				context.write(new Text(wordEntry.getKey()), new IntWritable(wordEntry.getValue()));
 		}
 	}
 
@@ -56,6 +66,10 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int count = 0;
+			for (IntWritable value : values)
+				count += value.get();
+			context.write(key, new IntWritable(count));
 		}
 	}
 
@@ -75,6 +89,17 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			for (String current : sorted_word_set){
+				MapWritable stripe = new MapWritable();
+				for (String other : sorted_word_set){
+					if(current.compareTo(other) != 0){
+						stripe.put(new Text(other), new IntWritable(1));
+					}
+				}
+				if (!stripe.isEmpty())
+					context.write(new Text(current), stripe);
+			}
+
 		}
 	}
 
@@ -89,6 +114,20 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			MapWritable stripe = new MapWritable();
+			for (MapWritable value : values){
+				for (Map.Entry<Writable, Writable> entry : value.entrySet()){
+					IntWritable count = (IntWritable) entry.getValue();
+					Text other = (Text) entry.getKey();
+					
+					IntWritable sum = (IntWritable)(stripe.get(other));
+					if(stripe.get(other) == null)
+						sum = ZERO;
+					IntWritable finalSum = new IntWritable(count.get() + sum.get());
+					stripe.put(other, finalSum);			
+				}
+			}
+			context.write(key, stripe);
 		}
 	}
 
@@ -142,6 +181,33 @@ public class CORStripes extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			MapWritable stripe = new MapWritable();
+			for (MapWritable value : values){
+				for (Map.Entry<Writable, Writable> entry : value.entrySet()){
+					IntWritable count = (IntWritable) entry.getValue();
+					Text other = (Text) entry.getKey();
+					IntWritable sum = ZERO;
+					if(stripe.get(other) != null)
+						sum = (IntWritable)(stripe.get(other));
+					IntWritable finalSum = new IntWritable(count.get() + sum.get());
+					stripe.put(other, finalSum);	
+				}
+			}
+			String current = key.toString();
+			int currentFreq = 0;
+			if(word_total_map.get(current) == null)
+				return;
+			currentFreq = word_total_map.get(current);
+
+			for (Map.Entry<Writable, Writable> entry : stripe.entrySet()){
+				String other = ((Text)entry.getKey()).toString();
+				int otherFreq = word_total_map.get(other);
+				if(otherFreq != 0){
+					int corFreq = ((IntWritable)entry.getValue()).get();
+					double cor = (double)corFreq/(currentFreq * otherFreq);
+					context.write(new PairOfStrings(current, other), new DoubleWritable(cor));
+				}
+			}
 		}
 	}
 

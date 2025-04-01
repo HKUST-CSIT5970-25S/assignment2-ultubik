@@ -8,7 +8,6 @@ import org.apache.hadoop.fs.*;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Partitioner;
@@ -18,9 +17,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.log4j.Logger;
-
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.*;
 
 
@@ -28,15 +25,20 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.commons.cli.ParseException;
 import java.util.*;
-import java.util.Arrays;
-import java.util.HashMap;
+
+import javax.naming.Context;
 
 /**
  * Compute the bigram count using "pairs" approach
  */
 public class CORPairs extends Configured implements Tool {
 	private static final Logger LOG = Logger.getLogger(CORPairs.class);
+	private static IntWritable ONE = new IntWritable(1);
+	//private static final Text WORD = new Text();
 
 	/*
 	 * TODO: Write your first-pass Mapper here.
@@ -53,6 +55,14 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			while (doc_tokenizer.hasMoreTokens()){
+				String word = doc_tokenizer.nextToken();
+				int count = (word_set.get(word) == null ? 1 : word_set.get(word) + 1);
+				word_set.put(word, count);
+			}
+			for(Map.Entry<String, Integer> wordEntry : word_set.entrySet())
+				context.write(new Text(wordEntry.getKey()), new IntWritable(wordEntry.getValue()));
+			
 		}
 	}
 
@@ -66,6 +76,10 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int count = 0;
+			for (IntWritable value : values)
+				count += value.get();
+			context.write(key, new IntWritable(count));
 		}
 	}
 
@@ -81,6 +95,16 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			Set<String> unique = new TreeSet<String>();
+			while (doc_tokenizer.hasMoreTokens())
+				unique.add(doc_tokenizer.nextToken());
+			for (String current : unique){
+				for (String other : unique){
+					if (current.compareTo(other) < 0){
+						context.write(new PairOfStrings(current, other), ONE);
+					}
+				}
+			}
 		}
 	}
 
@@ -93,6 +117,10 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int count = 0;
+			for (IntWritable value : values)
+				count += value.get();
+			context.write(key, new IntWritable(count));
 		}
 	}
 
@@ -145,6 +173,15 @@ public class CORPairs extends Configured implements Tool {
 			/*
 			 * TODO: Your implementation goes here.
 			 */
+			int count = 0;
+			for (IntWritable value : values)
+				count += value.get();
+			String leftWord = key.getLeftElement();
+			String rightWord = key.getRightElement();
+			int leftCount = word_total_map.get(leftWord);
+			int rightCount = word_total_map.get(rightWord);
+			double cor = (double)count/(leftCount * rightCount);
+			context.write(key, new DoubleWritable(cor));
 		}
 	}
 
